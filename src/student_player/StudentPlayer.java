@@ -1,9 +1,12 @@
 package student_player;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
 
 import boardgame.Move;
+import coordinates.Coord;
+import coordinates.Coordinates;
 import tablut.TablutBoardState;
 import tablut.TablutMove;
 import tablut.TablutPlayer;
@@ -11,10 +14,12 @@ import tablut.TablutPlayer;
 /** A player file submitted by a student. */
 public class StudentPlayer extends TablutPlayer {
 	
-	private int humanPlayer;
+	private int aiPlayer;
 	private int opponentPlayer;
 	private int level;
-	
+	private int WEIGHTING_NUM_PCS = 2;
+	private int WEIGHTING_KING_DIST = 10;
+	private int WEIGHTING_PCS_TO_KING = 1;
 
     /**
      * You must modify this constructor to return your student number. This is
@@ -34,11 +39,11 @@ public class StudentPlayer extends TablutPlayer {
        
     		// Set humanPlayer and opponentPlayer IDs
     		if(player_id == TablutBoardState.SWEDE) {
-    			humanPlayer = TablutBoardState.SWEDE;
+    			aiPlayer = TablutBoardState.SWEDE;
     			opponentPlayer = TablutBoardState.MUSCOVITE;
     		}
     		else {
-    			humanPlayer = TablutBoardState.MUSCOVITE;
+    			aiPlayer = TablutBoardState.MUSCOVITE;
     			opponentPlayer = TablutBoardState.SWEDE;
     		}
     		
@@ -53,18 +58,34 @@ public class StudentPlayer extends TablutPlayer {
     			return winMove;
     		}
     		
+    		// if greedy move exists for king to get to corner
+    		if(aiPlayer == TablutBoardState.SWEDE) {
+    			Move greedyMove = findGreedyMove(rootNode);
+    			if(greedyMove != null) {
+    				return greedyMove;
+    			}
+    		}
+    		
+    		//if any obvious move exists for king to get to corner
+    		Move obvMove = findObviousMove(children, rootNode);
+    		if(obvMove != null) {
+    			return obvMove;
+    		}
+    		
+    		//run monte carlo sim if no obv or greedy move exists
     		int endTime = 1500;
     		long startTimeStamp = System.currentTimeMillis();
     		while((System.currentTimeMillis() - startTimeStamp) < endTime) {
-    			for(TreeNode child: rootNode.getChildren()) {
+    			for(TreeNode child: children) {
     				TreeNode bestNode = chooseBestNode(child);
     				TablutBoardState playResult = simRandomPlay(bestNode.getState());
-    				if(playResult.getWinner() == humanPlayer) {
+    				if(playResult.getWinner() == aiPlayer) {
     					child.setWinningPoints((child.getWinningPoints() + 1));
     				}
     			}
     		}
     		
+    		//high score from monte carlo sim is returned
     		return getHighScore(rootNode.getChildren()).recentMove;
     		
     }
@@ -76,7 +97,7 @@ public class StudentPlayer extends TablutPlayer {
     private Move getWinMove(List<TreeNode> children) {
     		for(TreeNode child : children) {
     			TablutBoardState boardState = child.getState();
-    			if(boardState.getWinner() == humanPlayer) {
+    			if(boardState.getWinner() == aiPlayer) {
     				return child.getRecentMove();    			
 			}
     		}
@@ -105,8 +126,16 @@ public class StudentPlayer extends TablutPlayer {
      */
     private TreeNode chooseBestNode(TreeNode root) {
     		TreeNode node = root;
-    		node.addChildren();
-    		return node.getChildren().get(0);
+		node.addChildren();
+		int bestHeuristic = -1;
+		TreeNode bestNode = null;
+		for(TreeNode child: root.getChildren()) {
+			int heuristic = determineHeuristic(child.getState());
+			if(heuristic > bestHeuristic) {
+				bestNode = child;
+			}	
+		}
+		return bestNode;
     }
     
     /**
@@ -127,5 +156,71 @@ public class StudentPlayer extends TablutPlayer {
     		return tmpState;
     }
     
+    private int determineHeuristic(TablutBoardState boardState) {
+    		int points = 1000;
+    		if(boardState.gameOver()) {
+    			if(boardState.getWinner() == aiPlayer) {
+    				return 10000;
+    			}
+    			if(boardState.getWinner() == opponentPlayer) {
+    				return 0;
+    			}
+    		}
+    		
+    		Coord kingPiece = boardState.getKingPosition();
+    		HashSet<Coord> humanPlayerPieces = boardState.getPlayerPieceCoordinates();
+    		HashSet<Coord> opponentPlayerPieces = boardState.getOpponentPieceCoordinates();
+    		points += humanPlayerPieces.size();
+    		points -= opponentPlayerPieces.size();
+    		
+    		if(aiPlayer == TablutBoardState.SWEDE) {
+    			points -= WEIGHTING_KING_DIST * Coordinates.distanceToClosestCorner(kingPiece);
+    		}
+    		else {
+    			points += WEIGHTING_KING_DIST * Coordinates.distanceToClosestCorner(kingPiece);
+    		}
+    		return points;
+    }
     
+    private Move findGreedyMove(TreeNode parent) {
+    		Move bestMove = null;
+    		Coord kingPiece = parent.getState().getKingPosition();
+    		int minDist = Coordinates.distanceToClosestCorner(kingPiece);
+    		for(TablutMove move: parent.getState().getLegalMovesForPosition(kingPiece)) {
+    			int moveDist = Coordinates.distanceToClosestCorner(move.getEndPosition());
+    			if(moveDist < minDist) {
+    				TablutBoardState childState = (TablutBoardState) parent.getState().clone();
+    				childState.processMove(move);
+    				if(safeMove(childState)) {
+    					minDist = moveDist;
+    					bestMove = move;
+    				}
+    			}
+    		}
+    		return bestMove;
+    }
+    
+    private boolean safeMove(TablutBoardState boardState) {
+    		int originalTotalPcs = boardState.getNumberPlayerPieces(aiPlayer);
+    		for(TablutMove move: boardState.getAllLegalMoves()) {
+    				TablutBoardState childState = (TablutBoardState) boardState.clone();
+    				childState.processMove(move);
+    				int newTotalPcs = childState.getNumberPlayerPieces(aiPlayer);
+    				if(originalTotalPcs - newTotalPcs != 0) {
+    					return false;
+    				}
+    		}
+    		return true;
+    }
+    
+    private Move findObviousMove(List<TreeNode> children, TreeNode parent) {
+    		int prevOpponentPcs = parent.getState().getNumberPlayerPieces(opponentPlayer);
+    		for(TreeNode child: children) {
+    			int newOpponentPcs = child.getState().getNumberPlayerPieces(opponentPlayer);
+    			if(prevOpponentPcs - newOpponentPcs != 0) {
+    				return child.getRecentMove();
+    			}
+    		}
+    		return null;
+    }
 }
