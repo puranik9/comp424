@@ -53,7 +53,7 @@ public class StudentPlayer extends TablutPlayer {
     		List<TreeNode> children = rootNode.getChildren();
     		
     		// make win move if there is one
-    		Move winMove = getWinMove(children);
+    		Move winMove = findWinMove(children);
     		if(winMove != null) {
     			return winMove;
     		}
@@ -66,14 +66,8 @@ public class StudentPlayer extends TablutPlayer {
     			}
     		}
     		
-    		//if any obvious move exists for king to get to corner
-    		Move obvMove = findObviousMove(children, rootNode);
-    		if(obvMove != null) {
-    			return obvMove;
-    		}
-    		
     		//run monte carlo sim if no obv or greedy move exists
-    		int endTime = 1500;
+    		int endTime = 1000;
     		long startTimeStamp = System.currentTimeMillis();
     		while((System.currentTimeMillis() - startTimeStamp) < endTime) {
     			for(TreeNode child: children) {
@@ -86,15 +80,16 @@ public class StudentPlayer extends TablutPlayer {
     		}
     		
     		//high score from monte carlo sim is returned
-    		return getHighScore(rootNode.getChildren()).recentMove;
+    		return findHighScore(rootNode.getChildren()).recentMove;
     		
     }
     /**
+     * Find move to win if it exists
      * 
      * @param children
-     * @return
+     * @return Move winMove (null if there is no such move)
      */
-    private Move getWinMove(List<TreeNode> children) {
+    private Move findWinMove(List<TreeNode> children) {
     		for(TreeNode child : children) {
     			TablutBoardState boardState = child.getState();
     			if(boardState.getWinner() == aiPlayer) {
@@ -105,11 +100,12 @@ public class StudentPlayer extends TablutPlayer {
     }
     
     /**
+     * Find high score node amongst children in random play
      * 
      * @param children
-     * @return
+     * @return TreeNode highScore node
      */
-    private TreeNode getHighScore(List<TreeNode> children) {
+    private TreeNode findHighScore(List<TreeNode> children) {
     		TreeNode highScore = children.get(0);
     		for(TreeNode child: children) {
     			if(child.getWinningPoints() > highScore.getWinningPoints()) {
@@ -120,9 +116,29 @@ public class StudentPlayer extends TablutPlayer {
     }
     
     /**
+     * Simulate a random play for Monte Carlo
+     * 
+     * @param boardState
+     * @return TablutBoardState final state of game
+     */
+    private TablutBoardState simRandomPlay(TablutBoardState boardState) {
+    		TablutBoardState tmpState = (TablutBoardState) boardState.clone();
+    		if(tmpState.gameOver()) {
+    			return boardState;
+    		}
+    		while(!tmpState.gameOver()) {
+    			Random random = new Random();
+    			List<TablutMove> legalMoves = tmpState.getAllLegalMoves();
+    			tmpState.processMove(legalMoves.get(random.nextInt(legalMoves.size())));
+    		}
+    		return tmpState;
+    }
+    
+    /**
+     * Chooses best node based on determined heuristic
      * 
      * @param root
-     * @return
+     * @return TreeNode bestNode
      */
     private TreeNode chooseBestNode(TreeNode root) {
     		TreeNode node = root;
@@ -139,23 +155,11 @@ public class StudentPlayer extends TablutPlayer {
     }
     
     /**
+     * Determine heuristic found on state of board
      * 
-     * @param boardState
-     * @return
+     * @param childNode
+     * @return int total points heuristic
      */
-    private TablutBoardState simRandomPlay(TablutBoardState boardState) {
-    		TablutBoardState tmpState = (TablutBoardState) boardState.clone();
-    		if(tmpState.gameOver()) {
-    			return boardState;
-    		}
-    		while(!tmpState.gameOver()) {
-    			Random random = new Random();
-    			List<TablutMove> legalMoves = tmpState.getAllLegalMoves();
-    			tmpState.processMove(legalMoves.get(random.nextInt(legalMoves.size())));
-    		}
-    		return tmpState;
-    }
-    
     private int determineHeuristic(TreeNode childNode) {
     		TablutBoardState boardState = childNode.getState();
     		//basic heuristic
@@ -197,6 +201,13 @@ public class StudentPlayer extends TablutPlayer {
     		return points;
     }
     
+    /**
+     * Finds greedy way to move king closer to corner, 
+     * or moving closer to king to protect it
+     * 
+     * @param parent
+     * @return Move bestMove (null if there is no such move)
+     */
     private Move findGreedyMove(TreeNode parent) {
     		Move bestMove = null;
     		Coord kingPiece = parent.getState().getKingPosition();
@@ -215,6 +226,12 @@ public class StudentPlayer extends TablutPlayer {
     		return bestMove;
     }
     
+    /**
+     * Returns if state is safe after greedy move is made
+     * 
+     * @param boardState
+     * @return boolean
+     */
     private boolean safeMove(TablutBoardState boardState) {
     		int originalTotalPcs = boardState.getNumberPlayerPieces(aiPlayer);
     		for(TablutMove move: boardState.getAllLegalMoves()) {
@@ -227,15 +244,5 @@ public class StudentPlayer extends TablutPlayer {
     		}
     		return true;
     }
-    
-    private Move findObviousMove(List<TreeNode> children, TreeNode parent) {
-    		int prevOpponentPcs = parent.getState().getNumberPlayerPieces(opponentPlayer);
-    		for(TreeNode child: children) {
-    			int newOpponentPcs = child.getState().getNumberPlayerPieces(opponentPlayer);
-    			if(prevOpponentPcs - newOpponentPcs != 0) {
-    				return child.getRecentMove();
-    			}
-    		}
-    		return null;
-    }
+   
 }
