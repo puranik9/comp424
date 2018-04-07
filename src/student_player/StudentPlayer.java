@@ -130,7 +130,7 @@ public class StudentPlayer extends TablutPlayer {
 		int bestHeuristic = -1;
 		TreeNode bestNode = null;
 		for(TreeNode child: root.getChildren()) {
-			int heuristic = determineHeuristic(child.getState());
+			int heuristic = determineHeuristic(child);
 			if(heuristic > bestHeuristic) {
 				bestNode = child;
 			}	
@@ -156,8 +156,9 @@ public class StudentPlayer extends TablutPlayer {
     		return tmpState;
     }
     
-    private int determineHeuristic(TablutBoardState boardState) {
-    		int points = 1000;
+    private int determineHeuristic(TreeNode childNode) {
+    		TablutBoardState boardState = childNode.getState();
+    		//basic heuristic
     		if(boardState.gameOver()) {
     			if(boardState.getWinner() == aiPlayer) {
     				return 10000;
@@ -167,12 +168,26 @@ public class StudentPlayer extends TablutPlayer {
     			}
     		}
     		
+    		int points = 1000;
     		Coord kingPiece = boardState.getKingPosition();
+    		
+    		//get points for pieces remaining, lose points for opponents pieces remaining
     		HashSet<Coord> humanPlayerPieces = boardState.getPlayerPieceCoordinates();
     		HashSet<Coord> opponentPlayerPieces = boardState.getOpponentPieceCoordinates();
-    		points += humanPlayerPieces.size();
-    		points -= opponentPlayerPieces.size();
+    		points += WEIGHTING_NUM_PCS * humanPlayerPieces.size();
+    		points -= WEIGHTING_NUM_PCS * opponentPlayerPieces.size();
     		
+    		//get points for being close to king
+    		for(Coord coord: boardState.getPlayerPieceCoordinates()) {
+    			points -= WEIGHTING_PCS_TO_KING * coord.distance(kingPiece);
+    		}
+    		
+    		//lose points for opponent being close to king
+    		for(Coord coord: boardState.getPlayerPieceCoordinates()) {
+    			points -= WEIGHTING_PCS_TO_KING * coord.distance(kingPiece);
+    		}
+    		
+    		//get/lose points for king being close to corner 
     		if(aiPlayer == TablutBoardState.SWEDE) {
     			points -= WEIGHTING_KING_DIST * Coordinates.distanceToClosestCorner(kingPiece);
     		}
